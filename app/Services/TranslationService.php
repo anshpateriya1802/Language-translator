@@ -46,6 +46,16 @@ class TranslationService
      */
     public function translate(string $text, string $sourceLanguageCode, string $targetLanguageCode, bool $containsIdioms = false): array
     {
+        // Skip empty text
+        if (empty(trim($text))) {
+            return [
+                'translated_text' => '',
+                'translation_method' => 'none',
+                'contains_idioms' => false,
+                'is_idiom' => false
+            ];
+        }
+
         // Debug logging
         Log::debug('Translation request', [
             'text' => $text,
@@ -87,11 +97,24 @@ class TranslationService
                     'endpoint' => $this->libreTranslateEndpoint
                 ]);
                 
-                $response = Http::post($this->libreTranslateEndpoint, [
+                // LibreTranslate expects this format for the request
+                $requestData = [
                     'q' => $text,
                     'source' => $sourceLanguageCode,
                     'target' => $targetLanguageCode,
                     'format' => 'text'
+                ];
+                
+                // Make sure we're using the right headers for JSON request
+                $response = Http::withHeaders([
+                    'Content-Type' => 'application/json',
+                    'Accept' => 'application/json',
+                ])->post($this->libreTranslateEndpoint, $requestData);
+                
+                // Log the raw request and response for debugging
+                Log::debug('LibreTranslate request', [
+                    'endpoint' => $this->libreTranslateEndpoint,
+                    'data' => $requestData
                 ]);
                 
                 if ($response->successful()) {
@@ -105,6 +128,11 @@ class TranslationService
                             'contains_idioms' => $containsIdioms,
                             'is_idiom' => false
                         ];
+                    } else {
+                        Log::warning('LibreTranslate returned empty translation', [
+                            'result' => $result,
+                            'text' => $text
+                        ]);
                     }
                 } else {
                     Log::error('LibreTranslate API error', [
@@ -112,6 +140,29 @@ class TranslationService
                         'reason' => $response->reason(),
                         'body' => $response->body()
                     ]);
+                    
+                    // Try with different endpoint if we get a 403 or other error
+                    if ($response->status() == 403 || $response->status() == 401) {
+                        Log::info('Attempting to use alternative LibreTranslate public endpoint');
+                        // Try a different public LibreTranslate instance
+                        $alternativeEndpoint = 'https://translate.argosopentech.com/translate';
+                        $altResponse = Http::withHeaders([
+                            'Content-Type' => 'application/json',
+                            'Accept' => 'application/json',
+                        ])->post($alternativeEndpoint, $requestData);
+                        
+                        if ($altResponse->successful()) {
+                            $altResult = $altResponse->json();
+                            if (isset($altResult['translatedText']) && !empty($altResult['translatedText'])) {
+                                return [
+                                    'translated_text' => $altResult['translatedText'],
+                                    'translation_method' => 'libre_translate_alternative',
+                                    'contains_idioms' => $containsIdioms,
+                                    'is_idiom' => false
+                                ];
+                            }
+                        }
+                    }
                 }
             } catch (\Exception $e) {
                 Log::error('LibreTranslate API error: ' . $e->getMessage(), [
@@ -203,18 +254,36 @@ class TranslationService
 
         // Check if we have this language pair in our dictionary
         if (isset($dictionary[$sourceLanguageCode][$targetLanguageCode])) {
-            // Convert text to lowercase for matching
-            $lowerText = strtolower(trim($text));
+            // Try to translate each word in the sentence
+            $words = explode(' ', strtolower(trim($text)));
+            $translatedWords = [];
+            $anyTranslated = false;
             
-            // Check for direct match
+            foreach ($words as $word) {
+                $cleanWord = trim($word, ".,!?:;-()\"'");
+                
+                if (isset($dictionary[$sourceLanguageCode][$targetLanguageCode][$cleanWord])) {
+                    $translatedWords[] = $dictionary[$sourceLanguageCode][$targetLanguageCode][$cleanWord];
+                    $anyTranslated = true;
+                } else {
+                    $translatedWords[] = $word;
+                }
+            }
+            
+            if ($anyTranslated) {
+                return implode(' ', $translatedWords) . ' (Partial translation)';
+            }
+            
+            // Check for direct match with whole text
+            $lowerText = strtolower(trim($text));
             if (isset($dictionary[$sourceLanguageCode][$targetLanguageCode][$lowerText])) {
                 return $dictionary[$sourceLanguageCode][$targetLanguageCode][$lowerText];
             }
             
-            // Check for partial matches
+            // Check for partial matches in phrases
             foreach ($dictionary[$sourceLanguageCode][$targetLanguageCode] as $source => $target) {
                 if (stripos($lowerText, $source) !== false) {
-                    return $target;
+                    return str_ireplace($source, $target, $text);
                 }
             }
         }
