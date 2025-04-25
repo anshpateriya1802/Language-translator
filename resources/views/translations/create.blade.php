@@ -37,11 +37,17 @@
                             </option>
                         @endforeach
                     </select>
+                    <small class="text-muted">
+                        You can select the same language as source to get explanations for idioms.
+                    </small>
                     @error('target_language_id')
                         <span class="invalid-feedback" role="alert">
                             <strong>{{ $message }}</strong>
                         </span>
                     @enderror
+                    <div id="same-language-alert" class="alert alert-info mt-2 d-none">
+                        <i class="fas fa-info-circle me-1"></i> When source and target languages are the same, the system will provide explanations for idioms rather than translations.
+                    </div>
                 </div>
             </div>
             
@@ -142,5 +148,31 @@
         border-color: #4e73df;
     }
 </style>
+@endpush
+
+@push('scripts')
+<script>
+    document.addEventListener('DOMContentLoaded', function() {
+        const sourceLanguage = document.getElementById('source_language_id');
+        const targetLanguage = document.getElementById('target_language_id');
+        const sameLanguageAlert = document.getElementById('same-language-alert');
+        const idiomsCheckbox = document.getElementById('contains_idioms');
+        
+        function checkLanguages() {
+            if (sourceLanguage.value && targetLanguage.value && sourceLanguage.value === targetLanguage.value) {
+                sameLanguageAlert.classList.remove('d-none');
+                idiomsCheckbox.checked = true;
+            } else {
+                sameLanguageAlert.classList.add('d-none');
+            }
+        }
+        
+        sourceLanguage.addEventListener('change', checkLanguages);
+        targetLanguage.addEventListener('change', checkLanguages);
+        
+        // Check on page load for pre-filled values
+        checkLanguages();
+    });
+</script>
 @endpush
 @endsection 

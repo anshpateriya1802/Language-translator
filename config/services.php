@@ -36,7 +36,11 @@ return [
     ],
 
     'libre_translate' => [
-        'endpoint' => env('LIBRE_TRANSLATE_ENDPOINT', 'https://translate.argosopentech.com/translate'),
+        'endpoint' => env('LIBRE_TRANSLATE_ENDPOINT', 'https://libretranslate.org/translate'),
+        'fallback_endpoints' => [
+            'https://translate.argosopentech.com/translate',
+            'https://libretranslate.de/translate',
+        ],
     ],
 
 ];

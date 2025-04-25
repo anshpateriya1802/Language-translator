@@ -51,7 +51,7 @@ class TranslationController extends Controller
         $validated = $request->validate([
             'source_text' => 'required|string',
             'source_language_id' => 'required|exists:languages,id',
-            'target_language_id' => 'required|exists:languages,id|different:source_language_id',
+            'target_language_id' => 'required|exists:languages,id',
             'region_id' => 'nullable|exists:regions,id',
             'context' => 'nullable|string',
             'contains_idioms' => 'boolean',
